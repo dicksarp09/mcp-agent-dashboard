@@ -13,6 +13,9 @@ This repository implements a small LangGraph-style agent that safely routes user
 - `run_demo.py`: Demo harness that runs the MCP and example queries.
 
 **Architecture Layout**
+![Uploading ChatGPT Image Jan 31, 2026, 02_55_05 AM.png…]()
+
+
 - Components:
 	- Agent (`src/agent.py`): Orchestrates nodes (Intent, Validation, Routing, MCP client, Analysis, Response). It contains local caching and retry logic.
 	- MCP (`src/mcp_server.py`): Single-purpose FastAPI service that performs read-only, projection-limited queries against MongoDB. Acts as the only component with direct DB access.
