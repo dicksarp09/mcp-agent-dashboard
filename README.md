@@ -4,9 +4,12 @@
 This repository implements a small LangGraph-style agent that safely routes user requests through a minimal MCP (Model-Connector-Proxy) server to query MongoDB, performs deterministic analysis, and synthesizes human-readable responses. It is designed for safety, observability, and graceful failure handling when AI components are uncertain.
 
 **Contents**
+- **Backend** (`src/` + `run_demo.py`): Python LangGraph agent, MCP server, performance analyzer
+- **Frontend** (`web/`): React 18 + TypeScript dashboard with charts, filters, student panels
 - `src/mcp_server.py`: FastAPI MCP server enforcing strict input/output schemas and read-only Mongo projections.
 - `src/agent.py`: LangGraph-style node runner (Intent, Validation, Mongo MCP client, Analysis, Response, Error).
 - `src/performance_analyzer.py`: Student- and class-level analytics (summaries, trends, derived metrics, sparklines).
+- `web/`: React dashboard (see [web/README.md](web/README.md) for frontend documentation).
 - `run_demo.py`: Demo harness that runs the MCP and example queries.
 
 **Architecture Layout**
@@ -39,6 +42,8 @@ This repository implements a small LangGraph-style agent that safely routes user
 
 
 **Quick Start**
+
+**Backend Setup:**
 - Create a virtual environment and install dependencies:
 
 ```powershell
@@ -46,16 +51,32 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 ```
+
 - Provide runtime secrets in a `.env` file in the project root (optional for demo):
+  - `MONGO_URI`, `MONGO_DB`, `MONGO_COLLECTION` — for real MongoDB Atlas access
+  - `GOOGLE_API_KEY` — Groq API key for LLM intent parsing (optional)
 
-- `MONGO_URI`, `MONGO_DB`, `MONGO_COLLECTION` — for real MongoDB Atlas access
-- `GROQ_API_KEY` — Groq API key for LLM intent parsing (optional)
-
-- Run the demo:
+- Run the backend MCP server (stays running; serves on `http://127.0.0.1:8000`):
 
 ```powershell
 python run_demo.py
 ```
+
+**Frontend Setup (new terminal):**
+- Navigate to the web folder and install dependencies:
+
+```powershell
+cd web
+npm install
+npm run dev
+```
+
+- Dashboard runs on `http://localhost:3000`
+
+**Full Integration:**
+- Backend MCP server on port 8000
+- Frontend dev server on port 3000 (proxies `/api/*` to backend)
+- Open `http://localhost:3000` and start exploring student data
 
 **How it works**
 - Intent parsing: a dedicated Intent node calls an LLM (Groq) to parse user intent into a small, strict JSON payload (query_type, student_id, analysis options). A deterministic fallback parses natural language if the LLM response is absent or malformed.
@@ -100,6 +121,10 @@ User experience when AI fails
 - `src/agent.py` — node orchestration and MCP client
 - `src/performance_analyzer.py` — analytics logic and sparklines
 - `run_demo.py` — example runner and sanity checks
+- `web/` — React dashboard (see [web/README.md](web/README.md))
+- `web/src/api/client.ts` — MCP client with caching
+- `web/src/App.tsx` — main layout and KPI orchestration
+- `web/src/components/` — reusable UI components (Navbar, Leaderboard, StudentPanel, etc.)
 
 **Environment & Security notes**
 - Keep `MONGO_URI` and API keys out of source control. Use `.env` for local demos and a secrets manager in production.
@@ -110,9 +135,66 @@ User experience when AI fails
 - Replace local cache with Redis for multi-instance deployments.
 - Add a lightweight web UI or export CSV for richer visualization of trends.
 - Add CI checks to validate LLM intent-output schema periodically (contract testing).
+- Add authentication & role-based access control (RBAC) to dashboard (student vs. teacher vs. admin views).
+- Implement export-to-CSV / PDF in dashboard for reports.
+- Add real-time WebSocket notifications for at-risk alerts.
+- Dark mode toggle in dashboard settings.
 
 ---
 
-If you want, I can:
-- run the demo now and paste sample outputs, or
-- add a short example cURL sequence that hits the MCP endpoints with example payloads.
+## Architecture Overview
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                  React Dashboard (web/)                      │
+│  [KPI Cards] [Leaderboard] [Student Panel] [Charts/Filters]  │
+└─────────────────────────┬──────────────────────────────────┐ 
+                          │ API calls: /query, /class_analysis
+                          ▼
+┌──────────────────────────────────────────────────────────────┐
+│              FastAPI MCP Server (src/mcp_server.py)          │
+│  [Projection Whitelist] [Read-only] [Input Validation]       │
+└─────────────────────────┬──────────────────────────────────┐
+                          │ (Mongo only via MCP)
+                          ▼
+┌──────────────────────────────────────────────────────────────┐
+│            MongoDB Atlas / Local Collection                  │
+│  [Student Docs: G1, G2, G3, absences, failures, etc.]       │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│    LangGraph Agent (src/agent.py) — Used in run_demo.py     │
+│  [Intent Node + Groq LLM] → [Validation] → [MCP Client]    │
+│  → [Analysis Node] → [Response Synthesis]                    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+## Dashboard Features
+
+**1. KPI Overview (Top of Dashboard)**
+- Average Final Grade with color coding (green ≥12, yellow 10-12, red <10)
+- Highest / Lowest grades in class
+- At-risk student count and percentage
+- Total enrolled students
+
+**2. Charts & Analytics**
+- Grade distribution histogram (0-5, 5-10, 10-15, 15-20)
+- Risk status pie chart (Healthy vs At-Risk vs Warning)
+- Interactive tooltips on hover
+
+**3. Class Ranking Leaderboard**
+- Sortable by Name, Final Grade (G3), Trend
+- Paginated (20 students per page)
+- Risk status badges (red = <10, yellow = 10-12, green = ≥12)
+- Click a student to open detailed panel
+
+**4. Individual Student Panel**
+- **Overview Tab**: Summary stats, at-risk flag, study efficiency
+- **Grades Tab**: Line chart showing G1 → G2 → G3 progression
+- **Metrics Tab**: Behavioral data (absences, alcohol consumption, social outings), risk level, alerts
+
+**5. Filters & Search**
+- Grade range slider (0–20)
+- Risk status radio buttons (at-risk, healthy, improving, declining)
+- Study time slider (0–4 hours/week)
+- Dynamic filtering updates all charts and tables in real-time
