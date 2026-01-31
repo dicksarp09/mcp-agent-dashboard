@@ -14,7 +14,7 @@ This repository implements a small LangGraph-style agent that safely routes user
 
 **Architecture Layout**
 
-![Uploading ChatGPT Image Jan 31, 2026, 02_55_05 AM.png…]()
+<img width="1536" height="1024" alt="ChatGPT Image Jan 31, 2026, 02_51_12 AM" src="https://github.com/user-attachments/assets/2ad826eb-3a18-4d9d-85de-510e7f7f299b" />
 
 
 - Components:
