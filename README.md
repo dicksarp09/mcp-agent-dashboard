@@ -13,6 +13,7 @@ This repository implements a small LangGraph-style agent that safely routes user
 - `run_demo.py`: Demo harness that runs the MCP and example queries.
 
 **Architecture Layout**
+
 ![Uploading ChatGPT Image Jan 31, 2026, 02_55_05 AM.png…]()
 
 
