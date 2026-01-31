@@ -1,0 +1,236 @@
+You are building a production-oriented LangGraph agent that retrieves student performance data from MongoDB via a custom MCP server.
+
+This is not a demo agent. Follow the system design strictly.
+
+🧠 SYSTEM GOAL
+
+Build a single LangGraph agent that:
+
+Interprets a user request
+
+Decides whether a MongoDB query is required
+
+Safely queries MongoDB through a custom MCP server
+
+Returns structured, human-readable responses
+
+Handles failures, empty results, and invalid requests gracefully
+
+Never lets the LLM directly access MongoDB
+
+🧱 ARCHITECTURE (MANDATORY)
+Nodes (exactly these logical roles)
+
+Intent / Reasoning Node (LLM)
+
+Uses an LLM
+
+Interprets the user request
+
+Decides if a MongoDB query is needed
+
+Extracts:
+
+student_id
+
+requested fields (e.g. age, sex, G3)
+
+Does NOT access MongoDB
+
+Outputs a structured intent object into state
+
+Validation Node (Deterministic, no LLM)
+
+Validates:
+
+Mongo ObjectId format
+
+Allowed fields whitelist
+
+Normalizes query parameters
+
+Rejects malformed requests early
+
+Routes to error node if invalid
+
+Mongo MCP Tool Node
+
+Calls MongoDB ONLY through MCP
+
+Read-only queries
+
+Uses projections (no full document fetch unless requested)
+
+Returns structured JSON
+
+Returns empty result explicitly if not found
+
+No reasoning logic here
+
+Response Synthesis Node
+
+Converts Mongo result into user-facing text
+
+Handles:
+
+Empty result
+
+Partial fields
+
+No database calls
+
+Error / Fallback Node
+
+Handles:
+
+Validation failure
+
+MCP errors
+
+Empty DB responses
+
+Tool failures
+
+Produces a clean user message
+
+🔀 CONTROL FLOW (REQUIRED)
+
+Implement explicit routing logic.
+
+Routing function
+route_intent(state) -> Literal["mongo", "respond", "error"]
+
+
+Valid flows:
+
+Intent → Validation → Mongo → Response → END
+
+Intent → Validation → Error → END
+
+Intent → Direct Response → END
+
+🧠 STATE DESIGN (IMPORTANT)
+
+Use one LangGraph state, but logically partitioned:
+
+state = {
+  "request": {
+    "raw_input": str,
+    "student_id": Optional[str],
+    "fields": list[str]
+  },
+  "mongo_result": Optional[dict],
+  "final_response": Optional[str],
+  "error": Optional[str],
+  "attempt_count": int
+}
+
+
+Rules:
+
+Only Mongo node writes mongo_result
+
+Only Response node writes final_response
+
+Only Error node writes error
+
+Increment attempt_count on failures
+
+🔁 LOOP GUARD (MANDATORY)
+
+Prevent infinite loops.
+
+Add attempt_count to state
+
+Hard stop after max 2 attempts
+
+Route to Error node if exceeded
+
+🧠 MEMORY
+
+Use short-term memory only:
+
+MessagesState or equivalent
+
+No long-term persistence
+
+No vector stores
+
+No checkpoints (yet)
+
+🔐 MCP SERVER REQUIREMENTS
+
+Implement a custom MCP server for MongoDB.
+
+The MCP server must:
+
+Enforce strict input schema
+
+Enforce strict output schema
+
+Reject invalid projections
+
+Never return free text
+
+Never infer missing fields
+
+Be read-only
+
+🧰 TOOLS
+
+MongoDB query tool exposed via MCP
+
+Tool schema must be explicit
+
+Tool returns structured JSON only
+
+⛔ NON-GOALS (DO NOT ADD)
+
+No Playwright
+
+No multi-agent delegation
+
+No self-reflection loops
+
+No long-term memory
+
+No web scraping
+
+No automatic retries beyond loop guard
+
+📊 OBSERVABILITY (LIGHTWEIGHT)
+
+Add basic logging:
+
+Node name
+
+Outcome (success, empty, error)
+
+Duration
+
+Failure reason if any
+
+🗂️ DELIVERABLES
+
+Generate:
+
+LangGraph skeleton (states, nodes, edges)
+
+Routing logic
+
+Validation node
+
+MCP client interface
+
+MCP server implementation (Mongo read-only)
+
+Mongo query with projection
+
+Error handling paths
+
+Minimal runnable example
+
+Keep the code clean, explicit, and boring.
+Prefer correctness over cleverness.
+
+🔚 END OF PROMPT
