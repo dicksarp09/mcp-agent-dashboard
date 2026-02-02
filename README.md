@@ -149,28 +149,53 @@ User experience when AI fails
 ## Architecture Overview
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                  React Dashboard (web/)                      │
-│  [KPI Cards] [Leaderboard] [Student Panel] [Charts/Filters]  │
-└─────────────────────────┬──────────────────────────────────┐ 
-                          │ API calls: /query, /class_analysis
-                          ▼
-┌──────────────────────────────────────────────────────────────┐
-│              FastAPI MCP Server (src/mcp_server.py)          │
-│  [Projection Whitelist] [Read-only] [Input Validation]       │
-└─────────────────────────┬──────────────────────────────────┐
-                          │ (Mongo only via MCP)
-                          ▼
-┌──────────────────────────────────────────────────────────────┐
-│            MongoDB Atlas / Local Collection                  │
-│  [Student Docs: G1, G2, G3, absences, failures, etc.]       │
-└──────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────┐
-│    LangGraph Agent (src/agent.py) — Used in run_demo.py     │
-│  [Intent Node + Groq LLM] → [Validation] → [MCP Client]    │
-│  → [Analysis Node] → [Response Synthesis]                    │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────┐
+│  React Client   │
+│   (Dashboard)   │
+└────────┬────────┘
+         │ HTTP/REST
+         ▼
+┌─────────────────────────────────────┐
+│       LangGraph Agent Layer         │
+│  ┌──────────────────────────────┐  │
+│  │  Intent Classification Node   │  │ ← Rule-based + LLM fallback
+│  └──────────┬───────────────────┘  │
+│             ▼                       │
+│  ┌──────────────────────────────┐  │
+│  │   Input Validation Node      │  │ ← Security checkpoint
+│  └──────────┬───────────────────┘  │
+│             ▼                       │
+│  ┌──────────────────────────────┐  │
+│  │   MCP Tool Invocation Node   │  │ ← Database interaction
+│  └──────────┬───────────────────┘  │
+│             ▼                       │
+│  ┌──────────────────────────────┐  │
+│  │   Performance Analysis Node  │  │ ← Deterministic computation
+│  └──────────┬───────────────────┘  │
+│             ▼                       │
+│  ┌──────────────────────────────┐  │
+│  │   Response Formatting Node   │  │
+│  └──────────────────────────────┘  │
+└─────────────────┬───────────────────┘
+                  │ MCP Protocol
+                  ▼
+         ┌─────────────────┐
+         │   MCP Server    │
+         │  ┌───────────┐  │
+         │  │   Cache   │  │ ← In-memory (1,295x speedup)
+         │  └─────┬─────┘  │
+         │        ▼         │
+         │  ┌───────────┐  │
+         │  │Projection │  │ ← Security whitelist
+         │  │Whitelist  │  │
+         │  └─────┬─────┘  │
+         └────────┼─────────┘
+                  │ Read-only
+                  ▼
+         ┌─────────────────┐
+         │  MongoDB Atlas  │
+         │  (Students DB)  │
+         └─────────────────┘
 ```
 
 ## Dashboard Features
