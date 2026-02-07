@@ -70,7 +70,7 @@ def format_gauge(name: str, value: float, help_text: str = "") -> str:
     return "\n".join(lines)
 
 
-@router.get("", response_class=Response, media_type="text/plain")
+@router.get("")
 async def prometheus_metrics():
     """Expose metrics in Prometheus format."""
     output_lines = []
