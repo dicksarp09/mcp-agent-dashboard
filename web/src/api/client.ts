@@ -65,14 +65,29 @@ class MCPClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         student_id: studentId,
-        projection: ['_id', 'name', 'G1', 'G2', 'G3', 'studytime', 'absences', 'failures', 'Dalc', 'Walc', 'goout']
+        fields: ['name', 'G1', 'G2', 'G3', 'studytime', 'absences', 'failures', 'goout', 'Dalc', 'Walc']
       })
     });
 
     if (!res.ok) throw new Error(`Query failed: ${res.statusText}`);
     const data = await res.json();
-    this.cache.set(cacheKey, { data: data.projection || data, timestamp: Date.now() });
-    return data.projection || data;
+    
+    // Handle MCP backend response format: {student_id, result, error}
+    if (data.error) {
+      throw new Error(data.error);
+    }
+    if (!data.result) {
+      throw new Error('Student not found');
+    }
+    
+    // Map result to StudentDocument format (backend uses _id, frontend expects _id)
+    const studentData = {
+      ...data.result,
+      _id: data.student_id || data.result._id
+    };
+    
+    this.cache.set(cacheKey, { data: studentData, timestamp: Date.now() });
+    return studentData;
   }
 
   async classAnalysis(topN = 500, page = 1, atRiskOnly = false, gradeThreshold?: number): Promise<ClassAnalysisResponse> {
@@ -86,11 +101,7 @@ class MCPClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        top_n: topN,
-        page,
-        at_risk_only: atRiskOnly,
-        grade_threshold: gradeThreshold,
-        projection: ['_id', 'name', 'G1', 'G2', 'G3', 'studytime', 'absences', 'failures', 'Dalc', 'Walc', 'goout']
+        limit: topN
       })
     });
 

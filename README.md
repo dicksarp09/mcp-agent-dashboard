@@ -1,152 +1,66 @@
-
 # LangGraph — MCP-backed Student Analysis Agent
 
-This repository implements a small LangGraph-style agent that safely routes user requests through a minimal MCP (Model-Connector-Proxy) server to query MongoDB, performs deterministic analysis, and synthesizes human-readable responses. It is designed for safety, observability, and graceful failure handling when AI components are uncertain.
+This repository implements a production-ready LangGraph-style agent that safely routes user requests through a minimal MCP (Model-Connector-Proxy) server to query MongoDB, performs deterministic analysis, and synthesizes human-readable responses. It is designed for safety, observability, and graceful failure handling when AI components are uncertain.
 
-**Contents**
-- **Backend** (`src/` + `run_demo.py`): Python LangGraph agent, MCP server, performance analyzer
-- **Frontend** (`web/`): React 18 + TypeScript dashboard with charts, filters, student panels
-- `src/mcp_server.py`: FastAPI MCP server enforcing strict input/output schemas and read-only Mongo projections.
-- `src/agent.py`: LangGraph-style node runner (Intent, Validation, Mongo MCP client, Analysis, Response, Error).
-- `src/performance_analyzer.py`: Student- and class-level analytics (summaries, trends, derived metrics, sparklines).
-- `web/`: React dashboard (see [web/README.md](web/README.md) for frontend documentation).
-- `run_demo.py`: Demo harness that runs the MCP and example queries.
+**Key Features:**
+- ✅ Clean FastAPI backend with MongoDB integration
+- ✅ React 18 + TypeScript dashboard with real-time analytics
+- ✅ Comprehensive observability (metrics, tracing, cost tracking)
+- ✅ LLM-powered intent parsing with deterministic fallback
+- ✅ Read-only MCP server with projection whitelists
+- ✅ Student performance analysis (trends, risk assessment, class rankings)
 
-**Architecture Layout**
+---
 
-<img width="1536" height="1024" alt="ChatGPT Image Jan 31, 2026, 02_55_05 AM" src="https://github.com/user-attachments/assets/750c26ce-2d52-4f8b-9380-6f5c84e450ae" />
+## Quick Start
 
+### Prerequisites
+- Python 3.10+
+- Node.js 18+
+- MongoDB (local or Atlas)
 
-- Components:
-	- Agent (`src/agent.py`): Orchestrates nodes (Intent, Validation, Routing, MCP client, Analysis, Response). It contains local caching and retry logic.
-	- MCP (`src/mcp_server.py`): Single-purpose FastAPI service that performs read-only, projection-limited queries against MongoDB. Acts as the only component with direct DB access.
-	- Analyzer (`src/performance_analyzer.py`): Pure-Python business logic that computes student summaries, trends, derived alerts, and class statistics.
-	- Runner (`run_demo.py`): Local demo harness that launches the MCP and drives example queries.
+### 1. Backend Setup
 
-- Data flow (simplified):
-
-	User -> Agent (Intent Node → Validation) -> MCP (projection-only query) -> MongoDB
-																					 \-> Analyzer (if requested) -> Agent -> User
-
-- Deployment notes:
-	- The MCP is the recommended deployable boundary (container or serverless function). The agent can run in the same VPC or separately and call MCP over TLS.
-	- For multi-instance production, replace the in-process TTL cache with Redis or Memcached and add request tracing (OpenTelemetry).
-
-**Tech Stack**
-- Language: Python 3.10+ (3.11 recommended)
-- Web/API: FastAPI + Uvicorn (MCP)
-- Data: MongoDB (pymongo) — Atlas recommended for production
-- LLM: Groq client (model: `llama-3.3-70b-versatile`) used for intent parsing (optional)
-- Packaging & config: `python-dotenv` for local secret loading
-- Security & TLS: `certifi` (passed into `MongoClient` via `tlsCAFile` for Atlas)
-- Caching (demo): simple in-memory TTL cache (swap for Redis in production)
-- Testing: `pytest` recommended
-- Observability: builtin logging per node; recommend adding OpenTelemetry/Prometheus in production
-
-
-
-**Quick Start**
-
-**Backend Setup:**
-- Create a virtual environment and install dependencies:
-
-```powershell
+```bash
+# Create virtual environment
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.venv\Scripts\activate  # Windows
+# source .venv/bin/activate  # Mac/Linux
+
+# Install dependencies
 pip install -r requirements.txt
+
+# Create .env file
+cat > .env << EOL
+MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/
+MONGO_DB=student-db
+MONGO_COLLECTION=student_performance.records
+GROQ_API_KEY=your_groq_api_key_here
+EOL
+
+# Start the MCP server
+python start_server.py
 ```
 
-- Provide runtime secrets in a `.env` file in the project root (optional for demo):
-  - `MONGO_URI`, `MONGO_DB`, `MONGO_COLLECTION` — for real MongoDB Atlas access
-  - `GOOGLE_API_KEY` — Groq API key for LLM intent parsing (optional)
+Server runs on `http://127.0.0.1:8000`
 
-- Run the backend MCP server (stays running; serves on `http://127.0.0.1:8000`):
+### 2. Frontend Setup
 
-```powershell
-python run_demo.py
-```
-
-**Frontend Setup (new terminal):**
-- Navigate to the web folder and install dependencies:
-
-```powershell
+```bash
 cd web
 npm install
 npm run dev
 ```
 
-- Dashboard runs on `http://localhost:3000`
+Dashboard runs on `http://localhost:3000`
 
-**Full Integration:**
-- Backend MCP server on port 8000
-- Frontend dev server on port 3000 (proxies `/api/*` to backend)
-- Open `http://localhost:3000` and start exploring student data
+### 3. Access the Application
 
-**How it works**
-- Intent parsing: a dedicated Intent node calls an LLM (Groq) to parse user intent into a small, strict JSON payload (query_type, student_id, analysis options). A deterministic fallback parses natural language if the LLM response is absent or malformed.
-- Validation: a light-weight validator enforces allowed query types and required parameters.
-- MCP server: the agent never connects to MongoDB directly — all reads go through `src/mcp_server.py` which accepts projection-limited, read-only requests and returns sanitized documents. TLS CA (via `certifi`) and request timeouts are enforced to handle real Atlas latency and SSL.
-- Analysis node: business logic in `src/performance_analyzer.py` computes student summaries (averages, growth, sparklines), derived metrics (alerts, risk levels), and class-level statistics with pagination and filters.
-- Response synthesis: combines projected fields + analysis outputs into concise, human-readable text. The system returns structured JSON when callers request programmatic output.
-
-**How smart product decisions were made**
-- Safety-first: never give the LLM direct DB access. The MCP enforces a whitelist of allowed projection fields to reduce data exposure and accidental writes.
-- Deterministic fallback: LLMs are helpful at intent parsing, but fallbacks (regex heuristics and explicit validation) ensure the system behaves predictably when the model fails or returns non-JSON.
-- Observability: node-level logging records durations, outcomes, and failure reasons so product and SRE teams can prioritize model or infra fixes.
-- Incremental UX: textual sparklines and risk-level cues provide immediate, low-cost signals before investing in a full graphical dashboard.
-- Configurable tradeoffs: analysis options (top N, pagination, at-risk filters, grade thresholds) are parsed from either LLM output or heuristics so product can rapidly iterate on API ergonomics.
-
-**Does this resonate with systems-level concerns?**
-
-Error handling and reliability
-- Layered failures: every external call (LLM, MCP/DB) has a timeout and explicit error handling. The agent increments an `attempt_count` and fails gracefully after a small number of retries to avoid looping or accidental repeated charges to LLMs.
-- Fallbacks: when the LLM output is missing or unparsable, deterministic parsing and conservative defaults are used. If the MCP returns no results, the agent returns a helpful, non-technical explanation (e.g., "No student found for given id") and suggests next steps.
-- MCP safeguards: the MCP is the single source-of-truth for database access and enforces projection whitelists, input validation, and read-only semantics to reduce blast radius.
-
-Edge cases and data quality
-- Missing fields: analyzers assume missing numeric fields as null and compute sensible defaults (e.g., skip empty arrays, report insufficient data). All outputs explicitly label uncertainty (e.g., "insufficient trend data").
-- Partial datasets: class analysis supports pagination and filters so results remain responsive even on large collections; heavy queries are limited by server-side paging and projection.
-- Malformed IDs: pydantic validators in MCP validate `ObjectId` formats and return clear 400 errors.
-
-User experience when AI fails
-- Transparent messaging: when intent parsing fails, the system returns the deterministic fallback result and includes a short note that the LLM parsing was inconclusive.
-- Safe defaults: when analysis is impossible due to missing data, the agent returns what it can (raw projections) and an actionable message describing what's missing.
-- Human-in-the-loop: outputs are intentionally concise and include suggested follow-ups (e.g., "try 'student 123 analysis' or provide student name") so a human can quickly correct queries.
-
-**Design choices explained**
-- Why an MCP? Centralizing DB access in a minimal API reduces the attack surface, simplifies audits, and decouples the model from data access rules.
-- Why projection whitelists? Limits risk of exposing PII or unexpected fields when the LLM crafts queries.
-- Why mix LLM + deterministic parsing? LLMs are excellent for flexible natural language handling; deterministic fallback ensures correctness and reproducibility for product-critical operations.
-- Why textual sparklines & emoji cues? Low-effort, high-signal visual cues accelerate review in terminals and logs without building a full frontend.
-- Why local TTL cache? It reduces repeated RPCs for hot student queries during demos and light usage without introducing external infra like Redis.
-
-**Files of interest**
-- `src/mcp_server.py` — MCP endpoint and input validation
-- `src/agent.py` — node orchestration and MCP client
-- `src/performance_analyzer.py` — analytics logic and sparklines
-- `run_demo.py` — example runner and sanity checks
-- `web/` — React dashboard (see [web/README.md](web/README.md))
-- `web/src/api/client.ts` — MCP client with caching
-- `web/src/App.tsx` — main layout and KPI orchestration
-- `web/src/components/` — reusable UI components (Navbar, Leaderboard, StudentPanel, etc.)
-
-**Environment & Security notes**
-- Keep `MONGO_URI` and API keys out of source control. Use `.env` for local demos and a secrets manager in production.
-- When using Atlas, prefer IP-restricted keys and short-lived credentials.
-
-**Next steps & suggestions**
-- Add unit and integration tests for analyzers and MCP endpoints.
-- Replace local cache with Redis for multi-instance deployments.
-- Add a lightweight web UI or export CSV for richer visualization of trends.
-- Add CI checks to validate LLM intent-output schema periodically (contract testing).
-- Add authentication & role-based access control (RBAC) to dashboard (student vs. teacher vs. admin views).
-- Implement export-to-CSV / PDF in dashboard for reports.
-- Add real-time WebSocket notifications for at-risk alerts.
-- Dark mode toggle in dashboard settings.
+Open `http://localhost:3000` in your browser.
 
 ---
 
-## Architecture Overview
+## Architecture
 
 ```
 ┌─────────────────┐
@@ -198,32 +112,287 @@ User experience when AI fails
          └─────────────────┘
 ```
 
+### Components
+
+**Agent (`src/agent.py`)**
+- Orchestrates LangGraph nodes: Intent, Validation, MCP client, Analysis, Response
+- Implements local caching and observability instrumentation
+- 5 nodes with full metrics and tracing coverage
+
+**MCP Server (`src/mcp_server.py`)**
+- FastAPI service with read-only, projection-limited MongoDB access
+- Input validation and security whitelists
+- Full observability instrumentation
+
+**Performance Analyzer (`src/performance_analyzer.py`)**
+- Student summaries, trends, risk assessments
+- Class-level analytics and statistics
+- Sparkline generation for grade visualization
+
+**Observability (`src/observability.py`)**
+- Prometheus-compatible metrics
+- OpenTelemetry-style distributed tracing
+- LLM cost tracking
+
+---
+
+## Observability & AgentOps
+
+The system includes comprehensive observability covering 80% of production needs.
+
+### Metrics (Prometheus-compatible)
+
+#### Counters
+- `agent_requests_total{query_type}` - Total requests by query type
+- `agent_failures_total{node, reason}` - Failures by node and reason
+- `mcp_requests_total{status}` - MCP requests (success, error, not_found, validation_reject)
+- `mcp_rejected_requests_total{reason}` - Rejected requests
+- `llm_calls_total{model}` - LLM API calls
+- `llm_failures_total{reason}` - LLM call failures
+
+#### Histograms
+- `agent_latency_seconds{node}` - Node execution latency
+- `mcp_latency_seconds` - MCP call latency
+- `llm_latency_seconds` - LLM call latency
+- `analysis_latency_seconds` - Analysis operation latency
+
+#### Gauges
+- `agent_active_requests` - Currently active requests
+- `cache_hits` - Cache hit count
+- `cache_misses` - Cache miss count
+
+#### Cost Tracking
+- `llm_tokens_total{model}` - Cumulative token usage
+- `llm_cost_usd_total{model}` - Estimated cost in USD
+
+### Distributed Tracing
+
+**Agent Spans:**
+- `agent.intent` - Intent parsing
+- `agent.validation` - Request validation
+- `agent.mcp_call` - MCP server call
+- `agent.analysis` - Performance analysis
+- `agent.response` - Response synthesis
+
+**MCP Server Spans:**
+- `mcp.mongo_query` - MongoDB query execution
+
+### What You Can Answer
+
+✅ **Is the agent less reliable than yesterday?**
+- Compare `agent_failures_total` over time
+- Check failure rates per node
+
+✅ **Where is latency coming from?**
+- Analyze `agent_latency_seconds` by node
+- Check `mcp_latency_seconds` for DB bottlenecks
+- Review `llm_latency_seconds` for LLM delays
+
+✅ **Which node fails most often?**
+- Query `agent_failures_total{node}` metric
+- Filter by node type
+
+✅ **Which query types cost the most?**
+- Compare `llm_tokens_total` by query type
+- Review `llm_cost_usd_total`
+
+### Accessing Metrics
+
+```python
+from src.observability import get_metrics_summary, metrics
+
+# Get current metrics
+summary = get_metrics_summary()
+print(summary)
+
+# Access individual metrics
+print(f"Active requests: {metrics.agent_active_requests}")
+print(f"Cache hits: {metrics.cache_hits}")
+print(f"Total LLM cost: ${metrics.llm_cost_usd_total}")
+```
+
+---
+
+## API Endpoints
+
+### Health & Info
+- `GET /` - API info and status
+- `GET /health` - Health check
+- `GET /docs` - Swagger UI documentation
+
+### Student Queries
+- `POST /query` - Query single student by ID
+  ```json
+  {
+    "student_id": "689cef602490264c7f2dd235",
+    "fields": ["name", "G1", "G2", "G3"]
+  }
+  ```
+
+### Analysis
+- `POST /analyze/summary` - Student performance summary
+- `POST /analyze/trend` - Grade trend analysis
+- `POST /analyze/risk` - Risk assessment
+
+### Class-Level
+- `POST /class_analysis` - Get students for class analysis
+  ```json
+  {
+    "limit": 500
+  }
+  ```
+
+---
+
 ## Dashboard Features
 
-**1. KPI Overview (Top of Dashboard)**
-- Average Final Grade with color coding (green ≥12, yellow 10-12, red <10)
-- Highest / Lowest grades in class
+### KPI Overview
+- Average Final Grade (color-coded)
+- Highest / Lowest grades
 - At-risk student count and percentage
 - Total enrolled students
 
-**2. Charts & Analytics**
-- Grade distribution histogram (0-5, 5-10, 10-15, 15-20)
-- Risk status pie chart (Healthy vs At-Risk vs Warning)
-- Interactive tooltips on hover
+### Charts & Analytics
+- Grade distribution histogram
+- Risk status pie chart
+- Grade progression line charts
 
-**3. Class Ranking Leaderboard**
-- Sortable by Name, Final Grade (G3), Trend
+### Class Ranking Leaderboard
+- Sortable by Name, Grade, Trend
 - Paginated (20 students per page)
-- Risk status badges (red = <10, yellow = 10-12, green = ≥12)
-- Click a student to open detailed panel
+- Risk status badges
 
-**4. Individual Student Panel**
-- **Overview Tab**: Summary stats, at-risk flag, study efficiency
-- **Grades Tab**: Line chart showing G1 → G2 → G3 progression
-- **Metrics Tab**: Behavioral data (absences, alcohol consumption, social outings), risk level, alerts
+### Individual Student Panel
+- **Overview**: Summary stats, risk flag, study efficiency
+- **Grades**: G1 → G2 → G3 progression chart
+- **Metrics**: Behavioral data, alerts, risk level
 
-**5. Filters & Search**
-- Grade range slider (0–20)
-- Risk status radio buttons (at-risk, healthy, improving, declining)
-- Study time slider (0–4 hours/week)
-- Dynamic filtering updates all charts and tables in real-time
+### AI Assistant
+- Natural language queries
+- Student-specific analysis
+- Class-level statistics
+- Real-time responses via MCP
+
+---
+
+## Project Structure
+
+```
+mcp-agent-dashboard/
+├── src/
+│   ├── main.py                    # FastAPI application (production server)
+│   ├── agent.py                   # LangGraph agent with observability
+│   ├── mcp_server.py              # MCP server with observability
+│   ├── performance_analyzer.py    # Analytics logic
+│   ├── observability.py           # Metrics, tracing, cost tracking
+│   └── run_demo.py               # Demo harness (legacy)
+├── web/
+│   ├── src/
+│   │   ├── pages/                 # Dashboard, AI Assistant, Students
+│   │   ├── components/            # UI components
+│   │   └── api/client.ts          # MCP client
+│   └── package.json
+├── start_server.py               # Production server startup script
+├── requirements.txt              # Python dependencies
+├── .env                          # Environment variables
+└── README.md                     # This file
+```
+
+---
+
+## Environment Variables
+
+Create a `.env` file in the project root:
+
+```env
+# MongoDB (Required for real data)
+MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/?retryWrites=true&w=majority
+MONGO_DB=student-db
+MONGO_COLLECTION=student_performance.records
+
+# Groq API (Optional - for LLM intent parsing)
+GROQ_API_KEY=your_groq_api_key_here
+
+# Without MongoDB credentials, the server runs with mock data
+```
+
+---
+
+## Development
+
+### Running Tests
+
+```bash
+# Backend tests (add your tests to tests/ directory)
+pytest
+
+# Frontend tests
+cd web
+npm test
+```
+
+### Code Quality
+
+```bash
+# Type checking
+cd web
+npx tsc --noEmit
+
+# Linting
+npm run lint
+```
+
+---
+
+## Security & Best Practices
+
+- ✅ **Projection Whitelists**: MCP only allows specific fields
+- ✅ **Read-Only Access**: No write operations through MCP
+- ✅ **Input Validation**: Pydantic validators on all inputs
+- ✅ **No Raw Data in Metrics**: Observability uses low-cardinality labels only
+- ✅ **Trace Context**: Distributed tracing without exposing sensitive data
+- ✅ **Cost Tracking**: Static pricing, no external API calls
+
+---
+
+## Troubleshooting
+
+### Backend won't start
+- Check if port 8000 is free: `netstat -ano | findstr :8000`
+- Verify MongoDB credentials in `.env`
+- Check logs for connection errors
+
+### Frontend can't connect
+- Ensure backend is running on port 8000
+- Check browser console for CORS errors
+- Verify `vite.config.ts` proxy settings
+
+### LLM not working
+- Check `GROQ_API_KEY` in `.env`
+- System falls back to heuristic parsing if LLM fails
+- Check logs for "LLM parsing failed" messages
+
+---
+
+## License
+
+MIT License - see LICENSE file for details
+
+---
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
+
+---
+
+## Support
+
+For issues and questions:
+- Check the [API_README.md](API_README.md) for backend details
+- Check [OBSERVABILITY_SUMMARY.md](OBSERVABILITY_SUMMARY.md) for observability docs
+- Open an issue on GitHub

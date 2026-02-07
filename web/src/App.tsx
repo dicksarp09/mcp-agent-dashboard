@@ -1,221 +1,94 @@
 import './index.css';
-import React, { useState, useEffect } from 'react';
-import { mcpClient, StudentDocument, ClassAnalysisResponse } from './api/client';
-import { Navbar } from './components/Navbar';
-import { Sidebar, FilterState } from './components/Sidebar';
-import { KPICard } from './components/KPICard';
-import { Leaderboard } from './components/Leaderboard';
-import { StudentPanel } from './components/StudentPanel';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import React, { useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Menu, Bell } from 'lucide-react';
+import { Sidebar } from './components/Sidebar';
+import { Dashboard } from './pages/Dashboard';
+import { AIAssistant } from './pages/AIAssistant';
+import { Students } from './pages/Students';
+import { Analytics } from './pages/Analytics';
+import { Settings } from './pages/Settings';
+import { Help } from './pages/Help';
 
-export default function App() {
+function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [students, setStudents] = useState<StudentDocument[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedStudent, setSelectedStudent] = useState<StudentDocument | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [filters, setFilters] = useState<FilterState>({
-    gradeMin: 0,
-    gradeMax: 20,
-    riskStatus: '',
-    studytimeMin: 0,
-    studytimeMax: 4
-  });
-
-  useEffect(() => {
-    loadClassData();
-  }, []);
-
-  const loadClassData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await mcpClient.classAnalysis(500);
-      setStudents(response.students || []);
-      setCurrentPage(1);
-    } catch (err) {
-      setError(`Failed to load class data: ${err instanceof Error ? err.message : 'Unknown error'}`);
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const filteredStudents = students.filter(s => {
-    const g3 = s.G3 || 0;
-    if (g3 < filters.gradeMin || g3 > filters.gradeMax) return false;
-
-    if (filters.riskStatus) {
-      if (filters.riskStatus === 'at-risk' && g3 >= 10) return false;
-      if (filters.riskStatus === 'healthy' && g3 < 12) return false;
-    }
-
-    const st = s.studytime || 0;
-    if (st < filters.studytimeMin || st > filters.studytimeMax) return false;
-
-    return true;
-  });
-
-  const classStats = {
-    avgGrade: (filteredStudents.reduce((sum, s) => sum + (s.G3 || 0), 0) / (filteredStudents.length || 1)).toFixed(1),
-    highest: Math.max(...filteredStudents.map(s => s.G3 || 0), 0),
-    lowest: Math.min(...filteredStudents.map(s => s.G3 || 0), 20),
-    atRiskCount: filteredStudents.filter(s => (s.G3 || 0) < 10).length,
-    atRiskPercent: ((filteredStudents.filter(s => (s.G3 || 0) < 10).length / (filteredStudents.length || 1)) * 100).toFixed(1)
-  };
-
-  // Grade distribution
-  const gradeDistribution = [
-    { range: '0-5', count: filteredStudents.filter(s => (s.G3 || 0) < 5).length },
-    { range: '5-10', count: filteredStudents.filter(s => (s.G3 || 0) >= 5 && (s.G3 || 0) < 10).length },
-    { range: '10-15', count: filteredStudents.filter(s => (s.G3 || 0) >= 10 && (s.G3 || 0) < 15).length },
-    { range: '15-20', count: filteredStudents.filter(s => (s.G3 || 0) >= 15).length }
-  ];
-
-  // Risk distribution
-  const riskDistribution = [
-    { name: 'Healthy (≥12)', value: filteredStudents.filter(s => (s.G3 || 0) >= 12).length },
-    { name: 'At Risk (<10)', value: filteredStudents.filter(s => (s.G3 || 0) < 10).length },
-    { name: 'Warning (10-12)', value: filteredStudents.filter(s => (s.G3 || 0) >= 10 && (s.G3 || 0) < 12).length }
-  ];
-
-  const COLORS = ['#10b981', '#ef4444', '#f59e0b'];
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <Navbar
-        onSearch={(query) => console.log('Search:', query)}
-        onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-        sidebarOpen={sidebarOpen}
-      />
-
-      <div className="flex">
-        <Sidebar
-          onFilterChange={setFilters}
-          isOpen={sidebarOpen}
-        />
-
-        <main className="flex-1 overflow-auto">
-          <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
-            {error && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-                {error}
-                <button onClick={loadClassData} className="ml-4 underline font-medium">Retry</button>
-              </div>
-            )}
-
-            {loading ? (
-              <div className="flex items-center justify-center h-96">
-                <div className="text-center">
-                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-                  <p className="text-gray-600">Loading class data...</p>
-                </div>
-              </div>
-            ) : (
-              <>
-                {/* KPI Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
-                  <KPICard
-                    title="Avg Final Grade"
-                    value={classStats.avgGrade}
-                    status={parseFloat(classStats.avgGrade) >= 12 ? 'success' : 'warning'}
-                    icon="📊"
-                  />
-                  <KPICard
-                    title="Highest Grade"
-                    value={classStats.highest}
-                    status="success"
-                    icon="⬆️"
-                  />
-                  <KPICard
-                    title="Lowest Grade"
-                    value={classStats.lowest}
-                    status={classStats.lowest < 10 ? 'critical' : 'warning'}
-                    icon="⬇️"
-                  />
-                  <KPICard
-                    title="At-Risk Students"
-                    value={classStats.atRiskCount}
-                    subtext={`${classStats.atRiskPercent}% of class`}
-                    status="critical"
-                    icon="⚠️"
-                  />
-                  <KPICard
-                    title="Total Students"
-                    value={filteredStudents.length}
-                    status="info"
-                    icon="👥"
-                  />
-                </div>
-
-                {/* Charts Row */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                  {/* Grade Distribution */}
-                  <div className="bg-white rounded-lg border border-gray-200 p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Grade Distribution</h3>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart data={gradeDistribution}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="range" />
-                        <YAxis />
-                        <Tooltip />
-                        <Bar dataKey="count" fill="#3b82f6" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-
-                  {/* Risk Distribution */}
-                  <div className="bg-white rounded-lg border border-gray-200 p-6">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Risk Status Distribution</h3>
-                    <ResponsiveContainer width="100%" height={300}>
-                      <PieChart>
-                        <Pie
-                          data={riskDistribution}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({ name, value }) => `${name}: ${value}`}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {riskDistribution.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index]} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* Leaderboard */}
-                <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                  <div className="p-6 border-b border-gray-200">
-                    <h3 className="text-lg font-semibold text-gray-900">Class Ranking</h3>
-                    <p className="text-sm text-gray-500 mt-1">Showing {filteredStudents.length} students</p>
-                  </div>
-                  <Leaderboard
-                    students={filteredStudents}
-                    onSelectStudent={setSelectedStudent}
-                    currentPage={currentPage}
-                    pageSize={20}
-                    onPageChange={setCurrentPage}
-                  />
-                </div>
-              </>
-            )}
+    <Router>
+      <div className="min-h-screen bg-gray-50">
+        {/* Mobile Header */}
+        <div className="lg:hidden bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="p-2 hover:bg-gray-100 rounded-lg"
+          >
+            <Menu className="w-6 h-6 text-gray-600" />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+              <span className="text-white font-bold text-sm">AI</span>
+            </div>
+            <span className="font-bold text-gray-900">StudentAI</span>
           </div>
-        </main>
-      </div>
+          <button className="p-2 hover:bg-gray-100 rounded-lg">
+            <Bell className="w-5 h-5 text-gray-600" />
+          </button>
+        </div>
 
-      {selectedStudent && (
-        <StudentPanel
-          student={selectedStudent}
-          onClose={() => setSelectedStudent(null)}
-        />
-      )}
-    </div>
+        <div className="flex">
+          {/* Sidebar */}
+          <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+
+          {/* Main Content */}
+          <main className="flex-1 min-h-screen">
+            {/* Desktop Header */}
+            <header className="hidden lg:flex items-center justify-between px-8 py-4 bg-white border-b border-gray-200">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
+                  <span className="text-white font-bold">AI</span>
+                </div>
+                <div>
+                  <h1 className="font-bold text-gray-900">StudentAI</h1>
+                  <p className="text-xs text-gray-500">Connect</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <button className="p-2 hover:bg-gray-100 rounded-lg relative">
+                  <Bell className="w-5 h-5 text-gray-600" />
+                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+                </button>
+                <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
+                  <img
+                    src="https://ui-avatars.com/api/?name=Teacher&background=0D8ABC&color=fff"
+                    alt="Profile"
+                    className="w-9 h-9 rounded-full"
+                  />
+                  <div className="hidden xl:block">
+                    <p className="text-sm font-medium text-gray-900">Teacher Dashboard</p>
+                    <p className="text-xs text-gray-500">Admin</p>
+                  </div>
+                </div>
+              </div>
+            </header>
+
+            {/* Page Content */}
+            <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/chat" element={<AIAssistant />} />
+                <Route path="/students" element={<Students />} />
+                <Route path="/analytics" element={<Analytics />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="/help" element={<Help />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </div>
+          </main>
+        </div>
+      </div>
+    </Router>
   );
 }
+
+export default App;
