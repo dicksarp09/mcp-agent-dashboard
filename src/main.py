@@ -537,8 +537,14 @@ async def get_student_analytics():
 
 # Serve static files (React frontend) in production
 # Check if the build directory exists
-if os.path.exists("web/dist"):
-    app.mount("/", StaticFiles(directory="web/dist", html=True), name="static")
+static_dir = "web/dist"
+logger.info(f"Checking for static files at: {os.path.abspath(static_dir)}")
+logger.info(f"Current working directory: {os.getcwd()}")
+logger.info(f"Directory exists: {os.path.exists(static_dir)}")
+
+if os.path.exists(static_dir):
+    logger.info(f"✅ Serving static files from {static_dir}")
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
 
     # Catch-all route to serve index.html for client-side routing
     @app.get("/{full_path:path}")
@@ -546,7 +552,13 @@ if os.path.exists("web/dist"):
         # Don't catch API routes
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404)
-        return FileResponse("web/dist/index.html")
+        logger.info(f"Serving SPA for path: {full_path}")
+        return FileResponse(f"{static_dir}/index.html")
+else:
+    logger.warning(
+        f"⚠️  Static directory {static_dir} not found. Frontend will not be served."
+    )
+    logger.info(f"Contents of current directory: {os.listdir('.')}")
 
 
 if __name__ == "__main__":
