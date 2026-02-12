@@ -34,6 +34,9 @@ COPY start_server.py .
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /app/web/dist ./web/dist
 
+# Debug: List what's in the web directory
+RUN echo "=== Contents of /app ===" && ls -la /app && echo "=== Contents of /app/web ===" && ls -la /app/web || echo "web dir not found" && echo "=== Contents of /app/web/dist ===" && ls -la /app/web/dist || echo "dist dir not found"
+
 # Create a simple startup script
 RUN echo '#!/bin/bash\npython start_server.py' > start.sh && chmod +x start.sh
 
