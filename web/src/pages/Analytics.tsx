@@ -29,6 +29,7 @@ export const Analytics: React.FC = () => {
   const [systemMetrics, setSystemMetrics] = useState<SystemMetrics | null>(null);
   const [studentAnalytics, setStudentAnalytics] = useState<StudentAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAnalytics();
@@ -40,18 +41,28 @@ export const Analytics: React.FC = () => {
   const fetchAnalytics = async () => {
     try {
       setLoading(true);
+      setError(null);
       
       // Fetch system metrics
       const metricsRes = await fetch('/api/system-metrics');
+      if (!metricsRes.ok) {
+        throw new Error(`System metrics failed: ${metricsRes.status}`);
+      }
       const metricsData = await metricsRes.json();
+      console.log('System metrics:', metricsData);
       setSystemMetrics(metricsData);
 
       // Fetch student analytics
       const analyticsRes = await fetch('/api/student-analytics');
+      if (!analyticsRes.ok) {
+        throw new Error(`Student analytics failed: ${analyticsRes.status}`);
+      }
       const analyticsData = await analyticsRes.json();
+      console.log('Student analytics:', analyticsData);
       setStudentAnalytics(analyticsData);
     } catch (err) {
       console.error('Failed to fetch analytics:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch analytics');
     } finally {
       setLoading(false);
     }
@@ -93,7 +104,20 @@ export const Analytics: React.FC = () => {
         </button>
       </div>
 
-      {loading && !systemMetrics ? (
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-6 mb-6">
+          <h3 className="text-red-800 font-semibold mb-2">Error Loading Analytics</h3>
+          <p className="text-red-600">{error}</p>
+          <button 
+            onClick={fetchAnalytics}
+            className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {loading ? (
         <div className="text-center py-12">
           <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-4"></div>
           <p className="text-gray-600">Loading analytics...</p>
