@@ -5,6 +5,8 @@ FastAPI backend for student performance analysis via MCP protocol
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import os
@@ -519,6 +521,20 @@ async def get_student_analytics():
             "grade_trend": [{"month": "Current", "avg": 0}],
             "total_students": 0,
         }
+
+
+# Serve static files (React frontend) in production
+# Check if the build directory exists
+if os.path.exists("web/dist"):
+    app.mount("/", StaticFiles(directory="web/dist", html=True), name="static")
+
+    # Catch-all route to serve index.html for client-side routing
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Don't catch API routes
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404)
+        return FileResponse("web/dist/index.html")
 
 
 if __name__ == "__main__":
