@@ -37,10 +37,14 @@ COPY --from=frontend-builder /app/web/dist ./web/dist
 # Create a simple startup script
 RUN echo '#!/bin/bash\npython start_server.py' > start.sh && chmod +x start.sh
 
-# Expose port
+# Expose port (Railway will map this)
 EXPOSE 8000
 
-# Health check
+# Set environment variables for Railway
+ENV HOST=0.0.0.0
+ENV PORT=8000
+
+# Health check (must use 0.0.0.0 for external, or localhost for internal)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
