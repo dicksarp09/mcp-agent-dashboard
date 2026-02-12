@@ -159,7 +159,7 @@ async def health_check():
     return {"status": "healthy", "database": "connected" if USE_REAL_DB else "mock"}
 
 
-@app.post("/query", response_model=QueryResponse)
+@app.post("/api/query", response_model=QueryResponse)
 async def query_student(request: QueryRequest):
     """Query a single student by ID"""
     try:
@@ -201,7 +201,7 @@ async def query_student(request: QueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/class_analysis", response_model=ClassAnalysisResponse)
+@app.post("/api/class_analysis", response_model=ClassAnalysisResponse)
 async def class_analysis(request: ClassAnalysisRequest):
     """Get class-level analysis"""
     try:
@@ -256,7 +256,7 @@ async def class_analysis(request: ClassAnalysisRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/analyze/summary")
+@app.post("/api/analyze/summary")
 async def analyze_summary(request: QueryRequest):
     """Get student summary with analysis"""
     try:
@@ -300,7 +300,7 @@ async def analyze_summary(request: QueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/analyze/trend")
+@app.post("/api/analyze/trend")
 async def analyze_trend(request: QueryRequest):
     """Get student grade trend"""
     try:
@@ -337,7 +337,7 @@ async def analyze_trend(request: QueryRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/analyze/risk")
+@app.post("/api/analyze/risk")
 async def analyze_risk(request: QueryRequest):
     """Get student risk assessment"""
     try:
