@@ -159,15 +159,6 @@ def get_risk_level(G3: int) -> str:
 
 
 # API Routes
-@app.get("/")
-async def root():
-    return {
-        "message": "MCP Student Analytics API",
-        "version": "1.0.0",
-        "status": "connected to MongoDB" if USE_REAL_DB else "using mock data",
-    }
-
-
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "database": "connected" if USE_REAL_DB else "mock"}
