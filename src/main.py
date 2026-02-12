@@ -30,6 +30,18 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
+# Startup event
+@app.on_event("startup")
+async def startup_event():
+    logger.info("🚀 FastAPI application starting up...")
+    logger.info(f"📊 MongoDB connected: {USE_REAL_DB}")
+    logger.info(
+        f"🌐 Environment: {'Railway' if os.getenv('RAILWAY_ENVIRONMENT') else 'Local'}"
+    )
+    logger.info("✅ Application ready!")
+
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
