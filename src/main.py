@@ -3,7 +3,7 @@ MCP Student Analytics API
 FastAPI backend for student performance analysis via MCP protocol
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -12,6 +12,7 @@ from typing import List, Optional, Dict, Any
 import os
 import time
 import logging
+import asyncio
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -23,6 +24,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Import Grafana Cloud exporter (optional)
+grafana_exporter = None
+GRAFANA_ENABLED = False
+try:
+    from src.grafana_cloud import grafana_exporter as _grafana
+
+    grafana_exporter = _grafana
+    GRAFANA_ENABLED = True
+    logger.info("Grafana Cloud observability enabled")
+except ImportError as e:
+    logger.info(f"Grafana Cloud observability not available: {e}")
+
 # Create FastAPI app
 app = FastAPI(
     title="MCP Student Analytics API",
@@ -31,15 +44,55 @@ app = FastAPI(
 )
 
 
+# Background task to push metrics to Grafana Cloud
+async def push_metrics_task():
+    """Periodically push metrics to Grafana Cloud."""
+    while True:
+        await asyncio.sleep(15)  # Push every 15 seconds
+        if GRAFANA_ENABLED and grafana_exporter is not None:
+            try:
+                grafana_exporter.push_metrics()
+                logger.debug("Metrics pushed to Grafana Cloud")
+            except Exception as e:
+                logger.error(f"Failed to push metrics: {e}")
+
+
 # Startup event
 @app.on_event("startup")
 async def startup_event():
+    import asyncio
+
     logger.info("🚀 FastAPI application starting up...")
     logger.info(f"📊 MongoDB connected: {USE_REAL_DB}")
     logger.info(
         f"🌐 Environment: {'Railway' if os.getenv('RAILWAY_ENVIRONMENT') else 'Local'}"
     )
+    if GRAFANA_ENABLED:
+        logger.info("📈 Grafana Cloud metrics collection active")
+        # Start background metrics pushing task
+        asyncio.create_task(push_metrics_task())
     logger.info("✅ Application ready!")
+
+
+# Middleware to track request metrics
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    duration = time.time() - start_time
+
+    # Record metrics for Grafana Cloud
+    if (
+        GRAFANA_ENABLED
+        and grafana_exporter is not None
+        and getattr(grafana_exporter, "enabled", False)
+    ):
+        endpoint = request.url.path
+        method = request.method
+        status_code = response.status_code
+        grafana_exporter.record_http_request(method, endpoint, status_code, duration)
+
+    return response
 
 
 # CORS middleware
