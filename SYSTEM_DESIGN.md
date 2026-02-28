@@ -8,7 +8,7 @@ This document addresses 55 critical system design questions organized by impact 
 
 ## Tier 1: Critical (Architecture, Security, Resilience)
 
-### Architecture (25-30% impact)
+### Architecture 
 
 **1. Does it prevent "LLM as the system" anti-pattern?**
 ✅ **Yes.** The architecture explicitly separates LLM usage to intent parsing only (`src/agent.py:60-156`). All database access, validation, and business logic are deterministic functions. The LLM is a classifier, not the system.
@@ -25,7 +25,7 @@ This document addresses 55 critical system design questions organized by impact 
 **5. Are failure points enumerable at design time?**
 ✅ **Yes.** All failure modes are enumerated in `src/observability.py:22-28`: `LLM_PARSE`, `VALIDATION`, `MCP_ERROR`, `ANALYSIS`, `TIMEOUT`, `UNKNOWN`.
 
-### Security (15-20% impact)
+### Security 
 
 **6. Does it prevent direct database access by LLM?**
 ✅ **Yes.** The LLM never accesses the database. All DB access goes through the MCP server (`src/mcp_server.py`) which has field whitelists (`ALLOWED_FIELDS` at line 21-59) and is read-only.
@@ -42,7 +42,7 @@ This document addresses 55 critical system design questions organized by impact 
 **10. Is PII handling explicit and enforced?**
 ✅ **Yes.** PII fields are controlled via `ALLOWED_FIELDS` whitelist (`src/mcp_server.py:21-59`). MongoDB `_id` is explicitly excluded from responses (`src/mcp_server.py:142`).
 
-### Resilience (15% impact)
+### Resilience 
 
 **11. Is LLM failure treated as normal, not exceptional?**
 ✅ **Yes.** LLM failures are caught and logged (`src/agent.py:149-156`), with automatic fallback to heuristic parsing. The system operates normally without LLM.
@@ -63,7 +63,7 @@ This document addresses 55 critical system design questions organized by impact 
 
 ## Tier 2: Important (Observability, Production Readiness)
 
-### Observability (10-15% impact)
+### Observability 
 
 **16. Is every agent step traceable?**
 ✅ **Yes.** All 5 nodes emit spans: `agent.intent`, `agent.validation`, `agent.mcp_call`, `agent.analysis`, `agent.response` (`src/observability.py:170-175`).
@@ -80,7 +80,7 @@ This document addresses 55 critical system design questions organized by impact 
 **20. Do correlation IDs exist?**
 ✅ **Yes.** Every request gets a `trace_id` (`src/observability.py:110-111`) propagated through all spans.
 
-### Production Readiness (10-15% impact)
+### Production Readiness 
 
 **21. Are deployments reversible?**
 ⚠️ **Not implemented.** No deployment configuration (Kubernetes, Docker) included in this codebase.
@@ -101,7 +101,7 @@ This document addresses 55 critical system design questions organized by impact 
 
 ## Tier 3: Table Stakes (Edge Cases, User Context)
 
-### Edge Cases (10% impact)
+### Edge Cases 
 
 **26. Are infinite loops structurally prevented?**
 ✅ **Yes.** The error node limits attempts to 2 (`src/agent.py:783-791`). LangGraph's acyclic graph prevents true infinite loops.
@@ -212,102 +212,6 @@ This document addresses 55 critical system design questions organized by impact 
 
 **55. Can humans take over seamlessly?**
 ✅ **Yes.** All data is in MongoDB with standard query interfaces. Dashboard provides raw data view.
-
----
-
-## Validation & Testing
-
-The following results demonstrate the system working in production with real data:
-
-### Demo Execution Results
-
-**Test Environment:** Python virtual environment with MongoDB Atlas connection
-
-#### ✅ Success Indicators
-
-**1. Database Connection**
-- Connected to real MongoDB collection (not mock data)
-- Successfully queried 500 students from production database
-
-**2. LLM Integration**
-- Groq client initialized and working
-- Intent parsing working correctly:
-  - `single_student` queries
-  - `trend` analysis
-  - `derived_metrics` (risk assessment)
-  - `class_summary` (class-wide analysis)
-
-**3. Query Results**
-
-**Student Summary:**
-- Student ID: 689cef602490264c7f2dd235
-- Grades: [6, 10, 10]
-- Average: 8.7
-- Status: Improving trend
-- Study efficiency: Needs improvement (2h study time)
-
-**Risk Assessment:**
-- Risk level: LOW ⚪
-- No alerts triggered
-- Student performing adequately
-
-**Class Analysis:**
-- Total students analyzed: 500
-- At-risk students: 111 (22.2%)
-- Average final grade: 11.2
-- Grade range: 0 (lowest) to 20 (highest)
-
-**Trend Detection:**
-- Sparkline visualization: ▁██ (improving trend)
-- Clear visual indicator of grade progression
-
-**4. Performance Metrics**
-
-| Operation | Duration | Notes |
-|-----------|----------|-------|
-| First MongoDB query | ~14.8s | Cold start, establishing connection |
-| Cached queries | ~0s | 1,295x speedup! |
-| LLM intent parsing | 0.3-2.1s | Groq API latency |
-| Analysis node | ~0.001s | Instant deterministic computation |
-| Validation node | ~0.000s | Immediate regex validation |
-
-### What This Proves
-
-✅ **Architecture Validated** - Full LangGraph pipeline working: Intent → Validation → MCP → Analysis → Response
-
-✅ **Observability Working** - All 5 nodes traced with timing:
-- Intent Node
-- Validation Node  
-- Mongo MCP Tool Node
-- Performance Analysis Node
-- Response Synthesis Node
-
-✅ **Caching Effective** - Second query for same student returned instantly from cache
-
-✅ **Graceful Degradation** - System works with or without LLM (heuristic fallback available)
-
-✅ **Security Enforced** - Read-only access confirmed, field whitelists operational
-
-✅ **Real-World Performance** - Handles 500 students with 22.2% at-risk identification in production
-
-### Sample Queries Executed
-
-```
-"Can you summarize the performance for student 689cef602490264c7f2dd235?"
-→ Student summary with grades, average, growth analysis
-
-"Is student 689cef602490264c7f2dd235 improving or declining in grades?"
-→ Trend analysis with sparkline visualization
-
-"What are the risk factors for student 689cef602490264c7f2dd235?"
-→ Risk assessment: LOW with no alerts
-
-"Show me the class rankings and identify struggling students"
-→ Top 10 ranking + 111 at-risk students identified
-
-"I need an overview of class performance and at-risk rates"
-→ Complete class statistics: avg 11.2, 22.2% at-risk
-```
 
 ---
 

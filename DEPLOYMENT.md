@@ -383,11 +383,269 @@ For production deployment, consider:
 
 ---
 
+## AWS ECS Deployment
+
+This section covers deploying the MCP Student Analytics system to AWS ECS Fargate with CI/CD.
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        Internet                                  │
+└─────────────────────┬───────────────────────────────────────────┘
+                      │
+                      │ Port 80
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  Application Load Balancer (Public Subnet)                     │
+│  - DNS: mcp-agent-alb-*.elb.us-east-1.amazonaws.com            │
+└─────────────────────┬───────────────────────────────────────────┘
+                      │
+                      │ Port 8000
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  ECS Fargate Service (Private Subnet)                          │
+│  - Task Definition: mcp-agent-api                               │
+│  - Container: mcp-agent-api: latest                             │
+│  - Auto-scaling: CPU 70%, Memory 80%                            │
+└─────────────────────────────────────────────────────────────────┘
+                      │
+                      │ Outbound via NAT Gateway
+                      ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  VPC (10.0.0.0/16)                                              │
+│  - Public Subnet: 10.0.1.0/24                                   │
+│  - Private Subnet: 10.0.2.0/24                                  │
+│  - NAT Gateway: 10.0.1.5                                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Prerequisites
+
+1. **AWS Account** with appropriate permissions
+2. **GitHub Repository** with OIDC configured
+3. **AWS CLI** installed locally
+4. **Terraform** >= 1.7.0
+
+### AWS Bootstrap Instructions
+
+#### Step 1: Create S3 Bucket for Terraform State
+
+```bash
+aws s3 mb s3://mcp-agent-terraform-state --region us-east-1
+
+aws s3api put-bucket-versioning \
+  --bucket mcp-agent-terraform-state \
+  --versioning-configuration Status=Enabled
+```
+
+#### Step 2: Create DynamoDB Table for State Locking
+
+```bash
+aws dynamodb create-table \
+  --table-name mcp-agent-terraform-locks \
+  --attribute-definitions AttributeName=LockID,AttributeType=S \
+  --key-schema AttributeName=LockID,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST \
+  --region us-east-1
+```
+
+#### Step 3: Configure GitHub OIDC Provider
+
+```bash
+# Get GitHub OpenID Connect provider URL from GitHub
+# https://token.actions.githubusercontent.com
+
+# Create OIDC provider in AWS
+aws iam create-open-id-connect-provider \
+  --url https://token.actions.githubusercontent.com \
+  --client-id-list sts.amazonaws.com \
+  --thumbprint-list "6938FD4D98BABEC35D82C6E9D5D8B8D3F8E3B3A9"
+```
+
+#### Step 4: Configure GitHub Secrets
+
+In your GitHub repository, go to **Settings > Secrets and variables > Actions** and add:
+
+| Secret Name | Value |
+|-------------|-------|
+| `AWS_ROLE_ARN` | `arn:aws:iam::ACCOUNT_ID:role/mcp-agent-github-deploy-role` |
+| `AWS_REGION` | `us-east-1` |
+
+Add a **Variable**:
+| Variable Name | Value |
+|---------------|-------|
+| `AWS_REGION` | `us-east-1` |
+| `GITHUB_OIDC_PROVIDER_ARN` | `arn:aws:iam::ACCOUNT_ID:oidc-provider/token.actions.githubusercontent.com` |
+
+#### Step 5: Configure AWS Region Variable
+
+In your GitHub repository, go to **Settings > Secrets and variables > Actions > Variables** and add:
+- `AWS_REGION`: `us-east-1`
+- `GITHUB_OIDC_PROVIDER_ARN`: `arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com`
+
+### Local Development with Terraform
+
+#### Initialize Terraform
+
+```bash
+cd infrastructure
+terraform init
+```
+
+#### Validate Configuration
+
+```bash
+terraform validate
+```
+
+#### Plan Infrastructure Changes
+
+```bash
+terraform plan -out=tfplan
+```
+
+#### Apply Infrastructure
+
+```bash
+terraform apply -auto-approve tfplan
+```
+
+### GitHub Actions Deployment
+
+The CI/CD pipeline automatically deploys when code is pushed to `main`:
+
+1. **Test** - Runs pytest on the backend
+2. **Build & Push** - Builds Docker image and pushes to ECR
+3. **Terraform** - Provisions/updates AWS infrastructure
+4. **Deploy** - Updates ECS service with new image
+
+### Deployment Outputs
+
+After `terraform apply`, you'll see:
+- `alb_dns_name`: ALB DNS endpoint (e.g., `mcp-agent-alb-123456789.us-east-1.elb.amazonaws.com`)
+- `ecs_cluster_name`: ECS cluster name
+- `ecr_repository_url`: ECR repository URL
+
+### Rollback ECS Deployment
+
+To rollback to a previous version:
+
+```bash
+# List task definitions
+aws ecs list-task-definitions --family-name mcp-agent-api
+
+# Get previous task definition ARN
+PREVIOUS_TASK_DEF=$(aws ecs list-task-definitions --family-name mcp-agent-api --sort DESC --max-items 2 --query 'taskDefinitionArns[1]')
+
+# Update service to use previous task definition
+aws ecs update-service \
+  --cluster mcp-agent-cluster \
+  --service mcp-agent-api-service \
+  --task-definition $PREVIOUS_TASK_DEF \
+  --force-new-deployment
+```
+
+### Connect Monitoring (EC2)
+
+Deploy Prometheus + Grafana on EC2 for metrics collection:
+
+```bash
+# Launch EC2 instance in public subnet
+aws ec2 run-instances \
+  --image-id ami-0c55b159cbfafe1f0 \
+  --instance-type t3.small \
+  --key-name your-key-pair \
+  --security-group-ids sg-monitoring \
+  --subnet-id public-subnet-id \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=monitoring-server}]'
+
+# SSH into instance and run
+git clone your-repo
+cd your-repo
+docker-compose -f docker-compose.monitoring.yml up -d
+```
+
+### Monitoring Access
+
+- **Prometheus**: http://monitoring-ec2-public-ip:9090
+- **Grafana**: http://monitoring-ec2-public-ip:3000
+- **Default Credentials**: admin/admin
+
+Update Prometheus config to scrape ECS service:
+```yaml
+scrape_configs:
+  - job_name: 'mcp-agent-ecs'
+    static_configs:
+      - targets: ['ecs-private-ip:8000']
+    metrics_path: '/metrics'
+```
+
+### Environment Variables
+
+The ECS task receives these environment variables:
+- `ENVIRONMENT`: production
+- `HOST`: 0.0.0.0
+- `PORT`: 8000
+
+Additional variables should be stored in **AWS Systems Manager Parameter Store**:
+```bash
+aws ssm put-parameter \
+  --name /mcp-agent/MONGO_URI \
+  --value "mongodb+srv://..." \
+  --type SecureString
+```
+
+### Troubleshooting
+
+#### Check ECS Service Status
+```bash
+aws ecs describe-services \
+  --cluster mcp-agent-cluster \
+  --services mcp-agent-api-service
+```
+
+#### View CloudWatch Logs
+```bash
+aws logs tail /ecs/mcp-agent-api --follow
+```
+
+#### Check ALB Target Health
+```bash
+aws elbv2 describe-target-health \
+  --target-group-arn $(aws elbv2 describe-target-groups --names mcp-agent-ecs-tg --query 'TargetGroups[0].TargetGroupArn' --output text)
+```
+
+### Infrastructure Cleanup
+
+```bash
+# Destroy all resources
+cd infrastructure
+terraform destroy -auto-approve
+
+# Delete ECR images
+aws ecr batch-delete-image \
+  --repository-name mcp-agent-api \
+  --image-ids all
+
+# Delete S3 buckets (empty first)
+aws s3 rb s3://mcp-agent-terraform-state --force
+aws s3 rb s3://mcp-agent-model-artifacts-ACCOUNT_ID --force
+aws s3 rb s3://mcp-agent-logs-backup-ACCOUNT_ID --force
+
+# Delete DynamoDB table
+aws dynamodb delete-table --table-name mcp-agent-terraform-locks
+```
+
+---
+
 ## Resources
 
 - [Docker Documentation](https://docs.docker.com/)
 - [Docker Compose Documentation](https://docs.docker.com/compose/)
 - [MongoDB Docker Hub](https://hub.docker.com/_/mongo)
+- [AWS ECS Documentation](https://docs.aws.amazon.com/ecs/)
+- [Terraform AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
 
 ---
 
